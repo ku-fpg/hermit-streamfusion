@@ -51,6 +51,7 @@ foldlS' f z (Stream n s) = go SPEC z s
                             Skip s'    -> go sPEC z s'
                             Yield x s' -> go sPEC (f z x) s'
 {-# RULES "foldlS'" forall f z. foldl' f z = foldlS' f z . stream #-}
+{-# RULES "sum" sum = foldl' (+) 0 #-}
 
 {-# INLINE foldrS #-}
 foldrS :: (a -> b -> b) -> b -> Stream a -> b

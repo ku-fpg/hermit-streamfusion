@@ -29,7 +29,7 @@ plugin = optimize $ \ opts -> do
                                  $ promoteR
                                  $ tryR
                                  $ simplifyR
-                                   >+> (repeatR (onetdR $ promoteExprR $ bracketR "rule" $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
+                                   >+> repeatR (onetdR (promoteExprR $ bracketR "rule" $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
     run $ promoteR
         $ tryR
@@ -78,6 +78,7 @@ allRules =
     , "mapS"
     , "nilS"
     , "singletonS"
+    , "sum"
     , "tailS"
     , "zipS"
     , "zipWithS"
