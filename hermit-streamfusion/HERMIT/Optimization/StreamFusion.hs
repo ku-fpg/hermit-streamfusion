@@ -20,7 +20,8 @@ import Prelude hiding (until)
 
 plugin :: Plugin
 plugin = optimize $ \ opts -> do
-    let (os,cos) = partition (`elem` ["interactive","inline","rules"]) opts
+    let (os,cos) = partition (`elem` ["interactive","inline","rules","showrule"]) opts
+        srFlag = "showrule" `elem` os
     phase 0 $ do
         when ("interactive" `elem` os) $ phase 0 $ interactive sfexts cos
         -- We need to run the rules which match on standard list combinators
@@ -29,7 +30,7 @@ plugin = optimize $ \ opts -> do
                                  $ promoteR
                                  $ tryR
                                  $ simplifyR
-                                   >+> repeatR (onetdR (promoteExprR $ bracketR "rule" $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
+                                   >+> repeatR (onetdR (promoteExprR $ showRule srFlag $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
     run $ promoteR
         $ tryR
@@ -40,6 +41,10 @@ plugin = optimize $ \ opts -> do
         $ concatMapSR
     when ("inline" `elem` os) $ before SpecConstr $ run $ promoteR $ tryR $ inlineConstructors
     when ("interactive" `elem` os) $ lastPhase $ interactive sfexts cos
+
+showRule :: Bool -> RewriteH CoreExpr -> RewriteH CoreExpr
+showRule True = bracketR "rule"
+showRule False = (>>> traceR "rule")
 
 inlineConstructors :: RewriteH Core
 inlineConstructors = do
@@ -53,7 +58,7 @@ inlineConstructors = do
     let transT vs = tryM vs $ do
             vs' <- collectT (promoteT $ nonRecT (whenM (arr (`notElem` vs)) idR) (varT (arr (`elem` vs))) const)
             guardMsg (notNull vs') "no new bindings"
-            transT vs'
+            transT $ vs ++ vs'
 
     vs' <- transT vs
     innermostR (promoteR $ bracketR "inlining constructor" $ whenM (varT (arr (`elem` vs'))) inlineR)
@@ -97,6 +102,13 @@ allRules =
     , "zipS"
     , "zipWithS"
     ]
+
+-- All the rules with 'stream' at the head.
+streamRules :: [String]
+streamRules = [ "stream/unstream"
+              , "consS"
+              , "nilS"
+              ]
 
 sfexts :: [External]
 sfexts =
@@ -148,7 +160,7 @@ ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 
 -- | Return list of arguments to Stream (existential, generator, state)
 getDataConInfo :: TranslateH CoreExpr [CoreExpr]
-getDataConInfo = go <+ (tryR (caseFloatArgR Nothing >>> extractR (anyCallR (promoteR (rule "stream/unstream")))) >>> extractR simpStep >>> getDataConInfo)
+getDataConInfo = go <+ (tryR (caseFloatArgR Nothing >>> extractR (anyCallR (promoteR (rules streamRules)))) >>> extractR simpStep >>> getDataConInfo)
     where go = do (_dc, _tys, args) <- callDataConNameT $ TH.mkName "Stream"
                   return args
 

@@ -8,7 +8,7 @@ module HERMIT.Optimization.StreamFusion.List
     , concatMapS
     , concatS
     , consS
-    , dropS 
+    , dropS
     , elemS
     , enumFromToS
     , filterS
@@ -274,9 +274,13 @@ nilS = Stream (\() -> Done) ()
 
 {-# INLINE nubS #-}
 nubS :: Eq a => Stream a -> Stream a
-nubS s | nullS s = nilS
-       | otherwise = let x = headS s
-                     in consS x (filterS (/=x) s)
+nubS (Stream g s) = Stream nubG ([],s)
+    where nubG (seen,s) = case g s of
+                            Done -> Done
+                            Skip s' -> Skip (seen,s')
+                            Yield x s' | x `elem` seen -> Skip (seen, s')
+                                       | otherwise -> Yield x (x:seen, s')
+          {-# INLINE nubG #-}
 {-# RULES "nubS" nub = unstream . nubS . stream #-}
 
 {-# INLINE nullS #-}
@@ -301,6 +305,10 @@ singletonS x = Stream n (Just x)
           {-# INLINE n #-}
 -- {-# RULES "singletonS" forall x. consS x nilS = singletonS x #-}
 {-# RULES "singletonS" forall x. (:) x [] = unstream (singletonS x) #-}
+-- evaluated
+-- {-# RULES "singletonS" forall x. stream [x] = singletonS x #-}
+-- seems slower
+-- Goal: prevent CAF lists from getting pointlessly turned into consS and singletonS
 
 {-# INLINE snocS #-}
 snocS :: Stream a -> a -> Stream a
@@ -330,7 +338,7 @@ tailS (Stream n s) = Stream n' (Left s)
 {-# INLINE takeS #-}
 takeS :: Int -> Stream a -> Stream a
 takeS n (Stream g s) = Stream takeG (n,s)
-  where takeG (!n, s) 
+  where takeG (!n, s)
             | n > 0 = case g s of
                         Done       -> Done
                         Skip    s' -> Skip    (n, s')
@@ -1163,7 +1171,7 @@ union :: Eq a => Stream a -> Stream a -> Stream a
 intersect :: Eq a => Stream a -> Stream a -> Stream a
 -}
 
--- ** Ordered streams 
+-- ** Ordered streams
 
 {-
 sort :: Ord a => Stream a -> Stream a
@@ -1423,7 +1431,7 @@ bind b f (Stream next0 s0) = Stream next (s0 :!: Nothing)
     next (s :!: Nothing) = case next0 s of
       Done          -> Done
       Skip    s'    -> Skip    (s' :!: Nothing)
-      Yield x s' 
+      Yield x s'
         | b x       -> Skip (s' :!: Just (f x))
         | otherwise -> Skip (s' :!: Nothing)
 
