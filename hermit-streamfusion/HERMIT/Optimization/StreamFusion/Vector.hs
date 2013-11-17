@@ -159,7 +159,7 @@ simpStep =    simplifyR
            <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials
-                                     <+ (caseUnfloatR >>> appAllR idR idR))))
+                                     <+ (caseFloatInR >>> appAllR idR idR))))
            <+ promoteExprR unfoldR
 
 elimExistentials :: RewriteH CoreExpr

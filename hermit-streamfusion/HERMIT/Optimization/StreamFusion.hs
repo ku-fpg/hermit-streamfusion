@@ -179,7 +179,7 @@ simpStep =    simplifyR
            <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials
-                                     <+ (caseUnfloatR >>> appAllR idR idR))))
+                                     <+ (caseFloatInR >>> appAllR idR idR))))
            <+ promoteExprR unfoldR -- last resort, as we don't want to unfold 'stream' before the rule can fire
            <+ fail "simpStep failed"
 
