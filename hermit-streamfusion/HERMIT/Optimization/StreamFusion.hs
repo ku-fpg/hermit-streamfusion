@@ -22,6 +22,11 @@ plugin :: Plugin
 plugin = optimize $ \ opts -> do
     let (os,cos) = partition (`elem` ["interactive","inline","rules","showrule"]) opts
         srFlag = "showrule" `elem` os
+
+    -- debug output phase name
+    left <- liftM phasesLeft getPhaseInfo
+    when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show left ++ " ==========="
+
     phase 0 $ do
         when ("interactive" `elem` os) $ phase 0 $ interactive sfexts cos
         -- We need to run the rules which match on standard list combinators
@@ -171,7 +176,7 @@ sfSimp = repeatR simpStep
 simpStep :: RewriteH Core
 simpStep =    simplifyR
            <+ onetdR (promoteExprR $ rules allRules)
-           <+ (onetdR (promoteExprR (   letUnfloatR
+           <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials
                                      <+ (caseUnfloatR >>> appAllR idR idR))))

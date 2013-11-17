@@ -156,7 +156,7 @@ sfSimp = repeatR simpStep
 
 simpStep :: RewriteH Core
 simpStep =    simplifyR
-           <+ (onetdR (promoteExprR (   letUnfloatR
+           <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials
                                      <+ (caseUnfloatR >>> appAllR idR idR))))
