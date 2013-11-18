@@ -18,6 +18,7 @@ module HERMIT.Optimization.StreamFusion.List
     , foldlS'
     , foldrS
     , headS
+    , indexS
     , intersperseS
     , iterateS
     , lengthS
@@ -39,6 +40,17 @@ import HERMIT.Optimization.StreamFusion.Base
 
 import Data.Char (ord,chr)
 import Data.List (foldl', intersperse, nub, unfoldr)
+
+{-# INLINE indexS #-}
+indexS :: Stream a -> Int -> a
+indexS (Stream g s) n | n < 0 = error "(!!) negative index"
+                      | otherwise = go SPEC n s
+    where go !sPEC !n !s = case g s of
+                            Done       -> error "(!!) index too large"
+                            Skip s'    -> go sPEC n s'
+                            Yield x s' | n > 0 -> go sPEC (n-1) s'
+                                       | otherwise -> x
+{-# RULES "indexS" forall l n. l !! n = indexS (stream l) n #-}
 
 {-# INLINE allS #-}
 allS :: (a -> Bool) -> Stream a -> Bool

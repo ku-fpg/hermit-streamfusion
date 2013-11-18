@@ -90,6 +90,7 @@ allRules =
     , "foldlS'"
     , "foldrS"
     , "headS"
+    , "indexS"
     , "intersperseS"
     , "iterateS"
     , "lengthS"
