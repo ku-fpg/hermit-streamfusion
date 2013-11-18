@@ -35,7 +35,7 @@ plugin = optimize $ \ opts -> do
                                  $ promoteR
                                  $ tryR
                                  $ simplifyR
-                                   >+> repeatR (onetdR (promoteExprR $ showRule srFlag $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
+                                   >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
     run $ promoteR
         $ tryR
