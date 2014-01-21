@@ -21,8 +21,6 @@ import           HERMIT.Plugin
 
 import           HERMIT.Dictionary
 
-import qualified Language.Haskell.TH as TH
-
 import HERMIT.Optimization.StreamFusion (inlineConstructors)
 
 -- Fix the ordering of type arguments and avoid dealing with size
@@ -43,9 +41,9 @@ plugin = optimize $ \ opts -> do
         $ repeatR
         $ anyCallR
         $ promoteExprR
-        $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ['VS.concatMap, 'M.concatMap, 'V.concatMap]
+        $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
     forM_ opts' $ \ nm -> do
-        run $ promoteR $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR (TH.mkName nm))) >+> simplifyR
+        run $ promoteR $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
     -- interactive sfexts []
     before SpecConstr $ run $ promoteR $ tryR $ inlineConstructors
     lastPhase $ interactive sfexts []
@@ -59,33 +57,33 @@ sfexts =
         [ "special rule for concatmap" ]
     , external "simp-step" (simpStep :: RewriteH Core)
         [ "special rule for concatmap lambda" ]
-    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT 'M.Stream >>> arr (showPpr dfs)) :: TranslateH Core String) []
-    , external "inline-dictionaries" (promoteExprR . inlineFunctionWithTyConArgR :: TH.Name -> RewriteH Core) []
+    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT "Stream" >>> arr (showPpr dfs)) :: TranslateH Core String) []
+    , external "inline-dictionaries" (promoteExprR . inlineFunctionWithTyConArgR :: String -> RewriteH Core) []
     ]
 
-inlineFunctionWithTyConArgR :: TH.Name -> RewriteH CoreExpr
+inlineFunctionWithTyConArgR :: String -> RewriteH CoreExpr
 inlineFunctionWithTyConArgR nm = bracketR "inline dictionary" $ do
     -- this will fail if named TyCon is not a dictionary argument
     varT (arr idType >>> onetdT (funTyT (tyConG nm) successT const))
     inlineR
 
-tyConG :: TH.Name -> TranslateH Type ()
+tyConG :: String -> TranslateH Type ()
 tyConG name = do
     nm <- tyConAppT (arr tyConName) (const successT) const
-    guardMsg (name `cmpTHName2Name` nm) "not a matching Tycon."
+    guardMsg (name `cmpString2Name` nm) "not a matching Tycon."
 
 concatMapSR :: RewriteH CoreExpr
 concatMapSR = do
     -- concatMapM :: forall a m b. Monad m -> (a -> m (Stream m b)) -> Stream m a -> Stream m b
-    (_, [aTy, mTy, bTy, mDict, f]) <- callNameT 'M.concatMapM
+    (_, [aTy, mTy, bTy, mDict, f]) <- callNameT "concatMapM"
 
     (cxt, v, vs, n', st'') <- return f >>> ensureLam >>> exposeInnerStreamT
     st <- return st'' >>> tryR (extractR sfSimp)
     n@(Lam s _) <- return n' >>> tryR (extractR sfSimp) >>> ensureLam
 
-    flattenSid <- findIdT 'M.flatten
-    fixStepid <- findIdT 'fixStep
-    unknownid <- findIdT 'Size.Unknown
+    flattenSid <- findIdT "flatten"
+    fixStepid <- findIdT "fixStep"
+    unknownid <- findIdT "Unknown"
 
     let stash = mkCoreTup $ map varToCoreExpr vs
         st' = mkCoreTup [stash, st]
@@ -125,7 +123,7 @@ getDC = getDCFromReturn <+ getDCFromBind
 getDCFromBind :: TranslateH CoreExpr ( CoreExpr -> CoreExpr -- context of DC
                                      , [CoreExpr], [Var], [Var] )
 getDCFromBind = go <+ (extractR simpStep >>> getDCFromBind)
-    where go = do (b, [mTy, mDict, aTy, _bTy, lhs, rhs]) <- callNameT '(>>=)
+    where go = do (b, [mTy, mDict, aTy, _bTy, lhs, rhs]) <- callNameT ">>="
                   (x, (cxt, args, fvs, xs)) <- return rhs >>> ensureLam >>> lamT idR getDC (,)
                   return (\e -> let e' = cxt e
                                 in mkCoreApps b [mTy, mDict, aTy, Type (exprType e), lhs, Lam x e']
@@ -137,7 +135,7 @@ ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 getDCFromReturn :: TranslateH CoreExpr ( CoreExpr -> CoreExpr
                                        , [CoreExpr], [Var], [Var] )
 getDCFromReturn = go <+ (extractR simpStep >>> getDCFromReturn)
-    where go = do (r, [mTy, mDict, _aTy, dcExp]) <- callNameT 'return
+    where go = do (r, [mTy, mDict, _aTy, dcExp]) <- callNameT "return"
                   (args, fvs) <- return dcExp >>> getDataConInfo
                   return (\e -> mkCoreApps r [mTy, mDict, Type (exprType e), e]
                          , args, fvs, [])
@@ -146,7 +144,7 @@ getDCFromReturn = go <+ (extractR simpStep >>> getDCFromReturn)
 --   along with list of free variables.
 getDataConInfo :: TranslateH CoreExpr ([CoreExpr], [Var])
 getDataConInfo = go <+ (extractR simpStep >>> getDataConInfo)
-    where go = do (_dc, _tys, args) <- callDataConNameT 'M.Stream
+    where go = do (_dc, _tys, args) <- callDataConNameT "Stream"
                   fvs <- arr $ varSetElems . freeVarsExpr
                   return (args, fvs)
 
@@ -167,7 +165,7 @@ elimExistentials = do
     Case _s _bnd _ty alts <- idR
     guardMsg (notNull [ v | (_,vs,_) <- alts, v <- vs, isTyVar v ])
              "no existential types in patterns"
-    caseAllR (extractR sfSimp) idR idR (const idR) >>> {- observeR "before reduce" >>> -} caseReduceR -- >>> observeR "result"
+    caseAllR (extractR sfSimp) idR idR (const idR) >>> {- observeR "before reduce" >>> -} caseReduceR False -- >>> observeR "result"
 
 -- this currently slows things down, probably because of uneliminated streams/unstreams
 -- need to implement rules to convert generic vector functions to stream equivalents and

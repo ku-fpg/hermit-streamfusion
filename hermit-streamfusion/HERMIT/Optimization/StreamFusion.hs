@@ -14,8 +14,6 @@ import HERMIT.Plugin
 
 import HERMIT.Dictionary
 
-import qualified Language.Haskell.TH as TH
-
 import Prelude hiding (until)
 
 plugin :: Plugin
@@ -35,7 +33,7 @@ plugin = optimize $ \ opts -> do
                                  $ promoteR
                                  $ tryR
                                  $ simplifyR
-                                   >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ rules (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
+                                   >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ rulesR (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
     run $ promoteR
         $ tryR
@@ -120,7 +118,7 @@ sfexts :: [External]
 sfexts =
     [ external "concatmap" (promoteExprR concatMapSR :: RewriteH Core)
         [ "special rule for concatmap" ]
-    , external "all-rules" (repeatR (onetdR $ promoteExprR $ rules allRules) :: RewriteH Core)
+    , external "all-rules" (repeatR (onetdR $ promoteExprR $ rulesR allRules) :: RewriteH Core)
         [ "apply all the concatMap rules" ]
     , external "simp-step" (simpStep :: RewriteH Core)
         [ "do one step of simplification" ]
@@ -129,14 +127,14 @@ sfexts =
 concatMapSR :: RewriteH CoreExpr
 concatMapSR = do
     -- concatMapS :: forall a b. (a -> Stream b) -> Stream a -> Stream b
-    (_, [aTy, bTy, f]) <- callNameT (TH.mkName "concatMapS")
+    (_, [aTy, bTy, f]) <- callNameT "concatMapS"
 
     (v, n', st'') <- return f >>> ensureLam >>> exposeInnerStreamT
     st <- return st'' >>> tryR (extractR sfSimp)
     n@(Lam s _) <- return n' >>> tryR (extractR sfSimp) >>> ensureLam
 
-    flattenSid <- findIdT $ TH.mkName "flattenS"
-    fixStepid <- findIdT $ TH.mkName "fixStep"
+    flattenSid <- findIdT "flattenS"
+    fixStepid <- findIdT "fixStep"
 
     let st' = mkCoreTup [varToCoreExpr v, st]
     stId <- constT $ newIdH "st" (exprType st')
@@ -166,8 +164,8 @@ ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 
 -- | Return list of arguments to Stream (existential, generator, state)
 getDataConInfo :: TranslateH CoreExpr [CoreExpr]
-getDataConInfo = go <+ (tryR (caseFloatArgR Nothing >>> extractR (anyCallR (promoteR (rules streamRules)))) >>> extractR simpStep >>> getDataConInfo)
-    where go = do (_dc, _tys, args) <- callDataConNameT $ TH.mkName "Stream"
+getDataConInfo = go <+ (tryR (caseFloatArgR Nothing Nothing >>> extractR (anyCallR (promoteR (rulesR streamRules)))) >>> extractR simpStep >>> getDataConInfo)
+    where go = do (_dc, _tys, args) <- callDataConNameT "Stream"
                   return args
 
 sfSimp :: RewriteH Core
@@ -176,7 +174,7 @@ sfSimp = repeatR simpStep
 -- TODO: don't unfold recursive functions
 simpStep :: RewriteH Core
 simpStep =    simplifyR
-           <+ onetdR (promoteExprR $ rules allRules)
+           <+ onetdR (promoteExprR $ rulesR allRules)
            <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials
@@ -189,5 +187,5 @@ elimExistentials = do
     Case _s _bnd _ty alts <- idR
     guardMsg (notNull [ v | (_,vs,_) <- alts, v <- vs, isTyVar v ])
              "no existential types in patterns"
-    caseAllR (extractR sfSimp) idR idR (const idR) >>> {- observeR "before reduce" >>> -} caseReduceR -- >>> observeR "result"
+    caseAllR (extractR sfSimp) idR idR (const idR) >>> {- observeR "before reduce" >>> -} caseReduceR False -- >>> observeR "result"
 
