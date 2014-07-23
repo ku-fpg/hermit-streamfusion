@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module HERMIT.Optimization.StreamFusion (plugin, inlineConstructors) where
 
 import Control.Arrow
@@ -8,16 +9,16 @@ import Data.List (partition)
 import HERMIT.External
 import HERMIT.GHC
 import HERMIT.Kure
-import HERMIT.Monad
-import HERMIT.Optimize
+import HERMIT.Name
 import HERMIT.Plugin
+import HERMIT.Plugin.Builder
 
 import HERMIT.Dictionary
 
 import Prelude hiding (until)
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> do
+plugin = hermitPlugin $ \ opts -> do
     let (os,cos) = partition (`elem` ["interactive","inline","rules","showrule"]) opts
         srFlag = "showrule" `elem` os
 
@@ -30,19 +31,17 @@ plugin = optimize $ \ opts -> do
         -- We need to run the rules which match on standard list combinators
         -- before the simplifier tries to use the rules that belong to them.
         when ("rules" `elem` os) $ run
-                                 $ promoteR
                                  $ tryR
                                  $ simplifyR
                                    >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ rulesR (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
-    run $ promoteR
-        $ tryR
+    run $ tryR
         $ repeatR
         $ anyCallR
         $ promoteExprR
         $ bracketR "concatmap -> flatten"
         $ concatMapSR
-    when ("inline" `elem` os) $ before SpecConstr $ run $ promoteR $ tryR $ inlineConstructors
+    when ("inline" `elem` os) $ before SpecConstr $ run $ tryR $ inlineConstructors
     when ("interactive" `elem` os) $ lastPhase $ interactive sfexts cos
 
 showRule :: Bool -> RewriteH CoreExpr -> RewriteH CoreExpr
@@ -66,8 +65,7 @@ inlineConstructors = do
     vs' <- transT vs
     innermostR (promoteR $ bracketR "inlining constructor" $ whenM (varT (arr (`elem` vs'))) inlineR)
 
--- TODO: slurp these somehow? Need FastString tables to sync
-allRules :: [String]
+allRules :: [RuleName]
 allRules =
     [ "concat/concatMap" -- important this is first
     , "concat/concatMapS" -- ditto
@@ -108,11 +106,8 @@ allRules =
     ]
 
 -- All the rules with 'stream' at the head.
-streamRules :: [String]
-streamRules = [ "stream/unstream"
-              , "consS"
-              , "nilS"
-              ]
+streamRules :: [RuleName]
+streamRules = [ "stream/unstream", "consS", "nilS" ]
 
 sfexts :: [External]
 sfexts =
@@ -154,7 +149,7 @@ concatMapSR = do
 
 -- | Getting the inner stream.
 exposeInnerStreamT
-    :: TranslateH CoreExpr ( Var        -- the 'x' in 'concatMap (\x -> ...) ...'
+    :: TransformH CoreExpr ( Var        -- the 'x' in 'concatMap (\x -> ...) ...'
                            , CoreExpr   -- inner stream stepper function
                            , CoreExpr ) -- inner stream state
 exposeInnerStreamT = lamT idR getDataConInfo $ \ v [_sTy, g, st] -> (v, g, st)
@@ -163,7 +158,7 @@ ensureLam :: RewriteH CoreExpr
 ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 
 -- | Return list of arguments to Stream (existential, generator, state)
-getDataConInfo :: TranslateH CoreExpr [CoreExpr]
+getDataConInfo :: TransformH CoreExpr [CoreExpr]
 getDataConInfo = go <+ (tryR (caseFloatArgR Nothing Nothing >>> extractR (anyCallR (promoteR (rulesR streamRules)))) >>> extractR simpStep >>> getDataConInfo)
     where go = do (_dc, _tys, args) <- callDataConNameT "Stream"
                   return args

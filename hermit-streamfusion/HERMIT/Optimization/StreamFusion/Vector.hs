@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, TemplateHaskell, RankNTypes #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, RankNTypes #-}
 module HERMIT.Optimization.StreamFusion.Vector (plugin, fixStep, Size.Size(..)) where
 
 import           Control.Arrow
@@ -15,9 +15,9 @@ import           HERMIT.Core
 import           HERMIT.External
 import           HERMIT.GHC hiding (display)
 import           HERMIT.Kure
-import           HERMIT.Monad
-import           HERMIT.Optimize
+import           HERMIT.Name
 import           HERMIT.Plugin
+import           HERMIT.Plugin.Builder
 
 import           HERMIT.Dictionary
 
@@ -32,20 +32,19 @@ fixStep a mr = mr >>= return . go
 {-# INLINE fixStep #-}
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> do
+plugin = hermitPlugin $ \ opts -> do
     let (pn,opts') = fromMaybe (0,opts) (getPhaseFlag opts)
     done <- liftM phasesDone getPhaseInfo
     when (notNull done) $ liftIO $ print $ last done
-    run $ promoteR
-        $ tryR
+    run $ tryR
         $ repeatR
         $ anyCallR
         $ promoteExprR
         $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
     forM_ opts' $ \ nm -> do
-        run $ promoteR $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
+        run $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
     -- interactive sfexts []
-    before SpecConstr $ run $ promoteR $ tryR $ inlineConstructors
+    before SpecConstr $ run $ tryR $ inlineConstructors
     lastPhase $ interactive sfexts []
 
 concatMapSafe :: RewriteH CoreExpr
@@ -57,7 +56,7 @@ sfexts =
         [ "special rule for concatmap" ]
     , external "simp-step" (simpStep :: RewriteH Core)
         [ "special rule for concatmap lambda" ]
-    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT "Stream" >>> arr (showPpr dfs)) :: TranslateH Core String) []
+    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT "Stream" >>> arr (showPpr dfs)) :: TransformH Core String) []
     , external "inline-dictionaries" (promoteExprR . inlineFunctionWithTyConArgR :: String -> RewriteH Core) []
     ]
 
@@ -67,7 +66,7 @@ inlineFunctionWithTyConArgR nm = bracketR "inline dictionary" $ do
     varT (arr idType >>> onetdT (funTyT (tyConG nm) successT const))
     inlineR
 
-tyConG :: String -> TranslateH Type ()
+tyConG :: String -> TransformH Type ()
 tyConG name = do
     nm <- tyConAppT (arr tyConName) (const successT) const
     guardMsg (name `cmpString2Name` nm) "not a matching Tycon."
@@ -108,7 +107,7 @@ concatMapSR = do
 
 -- | Getting the inner stream.
 exposeInnerStreamT
-    :: TranslateH CoreExpr ( CoreExpr -> CoreExpr -- monadic context of inner stream
+    :: TransformH CoreExpr ( CoreExpr -> CoreExpr -- monadic context of inner stream
                            , Var        -- the 'x' in 'concatMap (\x -> ...) ...'
                            , [Var]      -- list of captured variables to put in state
                            , CoreExpr   -- inner stream stepper function
@@ -116,11 +115,11 @@ exposeInnerStreamT
 exposeInnerStreamT = lamT idR getDC $ \ v (cxt, [_sTy, g, st, _sz], fvs, vs) ->
                                             (cxt, v, if v `elem` fvs then (v:vs) else vs, g, st)
 
-getDC :: TranslateH CoreExpr ( CoreExpr -> CoreExpr -- context of DC
+getDC :: TransformH CoreExpr ( CoreExpr -> CoreExpr -- context of DC
                              , [CoreExpr], [Var], [Var] )
 getDC = getDCFromReturn <+ getDCFromBind
 
-getDCFromBind :: TranslateH CoreExpr ( CoreExpr -> CoreExpr -- context of DC
+getDCFromBind :: TransformH CoreExpr ( CoreExpr -> CoreExpr -- context of DC
                                      , [CoreExpr], [Var], [Var] )
 getDCFromBind = go <+ (extractR simpStep >>> getDCFromBind)
     where go = do (b, [mTy, mDict, aTy, _bTy, lhs, rhs]) <- callNameT ">>="
@@ -132,7 +131,7 @@ getDCFromBind = go <+ (extractR simpStep >>> getDCFromBind)
 ensureLam :: RewriteH CoreExpr
 ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 
-getDCFromReturn :: TranslateH CoreExpr ( CoreExpr -> CoreExpr
+getDCFromReturn :: TransformH CoreExpr ( CoreExpr -> CoreExpr
                                        , [CoreExpr], [Var], [Var] )
 getDCFromReturn = go <+ (extractR simpStep >>> getDCFromReturn)
     where go = do (r, [mTy, mDict, _aTy, dcExp]) <- callNameT "return"
@@ -142,7 +141,7 @@ getDCFromReturn = go <+ (extractR simpStep >>> getDCFromReturn)
 
 -- | Return list of arguments to Stream (existential, generator, state)
 --   along with list of free variables.
-getDataConInfo :: TranslateH CoreExpr ([CoreExpr], [Var])
+getDataConInfo :: TransformH CoreExpr ([CoreExpr], [Var])
 getDataConInfo = go <+ (extractR simpStep >>> getDataConInfo)
     where go = do (_dc, _tys, args) <- callDataConNameT "Stream"
                   fvs <- arr $ varSetElems . freeVarsExpr
