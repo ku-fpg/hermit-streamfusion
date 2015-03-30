@@ -8,7 +8,8 @@ import Data.List (partition)
 
 import HERMIT.External
 import HERMIT.GHC
-import HERMIT.Kure
+import HERMIT.Kure hiding (apply)
+import HERMIT.Lemma
 import HERMIT.Name
 import HERMIT.Plugin
 import HERMIT.Plugin.Builder
@@ -23,26 +24,26 @@ plugin = hermitPlugin $ \ opts -> do
         srFlag = "showrule" `elem` os
 
     -- debug output phase name
-    left <- liftM phasesLeft getPhaseInfo
+    left <- liftM passesLeft getPassInfo
     when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show left ++ " ==========="
 
-    phase 0 $ do
-        when ("interactive" `elem` os) $ phase 0 $ interactive sfexts cos
+    pass 0 $ do
+        when ("interactive" `elem` os) $ interactive sfexts cos
         -- We need to run the rules which match on standard list combinators
         -- before the simplifier tries to use the rules that belong to them.
-        when ("rules" `elem` os) $ run
+        when ("rules" `elem` os) $ apply
                                  $ tryR
                                  $ simplifyR
-                                   >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ rulesR (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
+                                   >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ unfoldRulesR UnsafeUsed (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
-    run $ tryR
-        $ repeatR
-        $ anyCallR
-        $ promoteExprR
-        $ bracketR "concatmap -> flatten"
-        $ concatMapSR
-    when ("inline" `elem` os) $ before SpecConstr $ run $ tryR $ inlineConstructors
-    when ("interactive" `elem` os) $ lastPhase $ interactive sfexts cos
+    apply $ tryR
+          $ repeatR
+          $ anyCallR
+          $ promoteExprR
+          $ bracketR "concatmap -> flatten"
+          $ concatMapSR
+    when ("inline" `elem` os) $ before SpecConstr $ apply $ tryR $ inlineConstructors
+    when ("interactive" `elem` os) $ lastPass $ interactive sfexts cos
 
 showRule :: Bool -> RewriteH CoreExpr -> RewriteH CoreExpr
 showRule True = bracketR "rule"
@@ -111,11 +112,11 @@ streamRules = [ "stream/unstream", "consS", "nilS" ]
 
 sfexts :: [External]
 sfexts =
-    [ external "concatmap" (promoteExprR concatMapSR :: RewriteH Core)
+    [ external "concatmap" (promoteExprR concatMapSR :: RewriteH LCore)
         [ "special rule for concatmap" ]
-    , external "all-rules" (repeatR (onetdR $ promoteExprR $ rulesR allRules) :: RewriteH Core)
+    , external "all-rules" (repeatR (onetdR $ promoteExprR $ unfoldRulesR UnsafeUsed allRules) :: RewriteH LCore)
         [ "apply all the concatMap rules" ]
-    , external "simp-step" (simpStep :: RewriteH Core)
+    , external "simp-step" (simpStep :: RewriteH LCore)
         [ "do one step of simplification" ]
     ]
 
@@ -159,17 +160,17 @@ ensureLam = tryR (extractR simplifyR) >>> (lamAllR idR idR <+ etaExpandR "x")
 
 -- | Return list of arguments to Stream (existential, generator, state)
 getDataConInfo :: TransformH CoreExpr [CoreExpr]
-getDataConInfo = go <+ (tryR (caseFloatArgR Nothing Nothing >>> extractR (anyCallR (promoteR (rulesR streamRules)))) >>> extractR simpStep >>> getDataConInfo)
+getDataConInfo = go <+ (tryR (caseFloatArgR Nothing Nothing >>> extractR (anyCallR (promoteR (unfoldRulesR UnsafeUsed streamRules)))) >>> extractR simpStep >>> getDataConInfo)
     where go = do (_dc, _tys, args) <- callDataConNameT "Stream"
                   return args
 
-sfSimp :: RewriteH Core
+sfSimp :: RewriteH LCore
 sfSimp = repeatR simpStep
 
 -- TODO: don't unfold recursive functions
-simpStep :: RewriteH Core
+simpStep :: RewriteH LCore
 simpStep =    simplifyR
-           <+ onetdR (promoteExprR $ rulesR allRules)
+           <+ onetdR (promoteExprR $ unfoldRulesR UnsafeUsed allRules)
            <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
                                      <+ elimExistentials

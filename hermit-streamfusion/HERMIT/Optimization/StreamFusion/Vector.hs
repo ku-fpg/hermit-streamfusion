@@ -14,7 +14,7 @@ import qualified Data.Vector.Fusion.Stream.Size as Size
 import           HERMIT.Core
 import           HERMIT.External
 import           HERMIT.GHC hiding (display)
-import           HERMIT.Kure
+import           HERMIT.Kure hiding (apply)
 import           HERMIT.Name
 import           HERMIT.Plugin
 import           HERMIT.Plugin.Builder
@@ -33,31 +33,31 @@ fixStep a mr = mr >>= return . go
 
 plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
-    let (pn,opts') = fromMaybe (0,opts) (getPhaseFlag opts)
-    done <- liftM phasesDone getPhaseInfo
+    let (pn,opts') = fromMaybe (0,opts) (getPassFlag opts)
+    done <- liftM passesDone getPassInfo
     when (notNull done) $ liftIO $ print $ last done
-    run $ tryR
-        $ repeatR
-        $ anyCallR
-        $ promoteExprR
-        $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
+    apply $ tryR
+          $ repeatR
+          $ anyCallR
+          $ promoteExprR
+          $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
     forM_ opts' $ \ nm -> do
-        run $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
+        apply $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
     -- interactive sfexts []
-    before SpecConstr $ run $ tryR $ inlineConstructors
-    lastPhase $ interactive sfexts []
+    before SpecConstr $ apply $ tryR $ inlineConstructors
+    lastPass $ interactive sfexts []
 
 concatMapSafe :: RewriteH CoreExpr
 concatMapSafe = concatMapSR >>> ((lintExprT >>= \_ -> traceR "Success!") <+ traceR "Failed On Lint")
 
 sfexts :: [External]
 sfexts =
-    [ external "concatmap" (promoteExprR concatMapSR :: RewriteH Core)
+    [ external "concatmap" (promoteExprR concatMapSR :: RewriteH LCore)
         [ "special rule for concatmap" ]
-    , external "simp-step" (simpStep :: RewriteH Core)
+    , external "simp-step" (simpStep :: RewriteH LCore)
         [ "special rule for concatmap lambda" ]
-    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT "Stream" >>> arr (showPpr dfs)) :: TransformH Core String) []
-    , external "inline-dictionaries" (promoteExprR . inlineFunctionWithTyConArgR :: String -> RewriteH Core) []
+    , external "extract-show" (promoteExprT (constT getDynFlags >>= \ dfs -> callDataConNameT "Stream" >>> arr (showPpr dfs)) :: TransformH LCore String) []
+    , external "inline-dictionaries" (promoteExprR . inlineFunctionWithTyConArgR :: String -> RewriteH LCore) []
     ]
 
 inlineFunctionWithTyConArgR :: String -> RewriteH CoreExpr
@@ -148,10 +148,10 @@ getDataConInfo = go <+ (extractR simpStep >>> getDataConInfo)
                   return (args, fvs)
 
 -- Simplification
-sfSimp :: RewriteH Core
+sfSimp :: RewriteH LCore
 sfSimp = repeatR simpStep
 
-simpStep :: RewriteH Core
+simpStep :: RewriteH LCore
 simpStep =    simplifyR
            <+ (onetdR (promoteExprR (   letFloatInR
                                      <+ caseElimR
