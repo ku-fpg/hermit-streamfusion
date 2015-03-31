@@ -8,6 +8,7 @@ import Data.List (partition)
 
 import HERMIT.External
 import HERMIT.GHC
+import HERMIT.Kernel
 import HERMIT.Kure hiding (apply)
 import HERMIT.Lemma
 import HERMIT.Name
@@ -31,18 +32,19 @@ plugin = hermitPlugin $ \ opts -> do
         when ("interactive" `elem` os) $ interactive sfexts cos
         -- We need to run the rules which match on standard list combinators
         -- before the simplifier tries to use the rules that belong to them.
-        when ("rules" `elem` os) $ apply
+        when ("rules" `elem` os) $ apply (Always "-- apply all rules")
                                  $ tryR
                                  $ simplifyR
                                    >+> repeatR (anytdR (promoteExprR $ showRule srFlag $ unfoldRulesR UnsafeUsed (filter (`notElem` ["consS", "nilS", "singletonS"]) allRules))
                                         <+ simplifyR)
-    apply $ tryR
-          $ repeatR
-          $ anyCallR
-          $ promoteExprR
-          $ bracketR "concatmap -> flatten"
-          $ concatMapSR
-    when ("inline" `elem` os) $ before SpecConstr $ apply $ tryR $ inlineConstructors
+    apply (Always "-- concatmap -> flatten")
+        $ tryR
+        $ repeatR
+        $ anyCallR
+        $ promoteExprR
+        $ bracketR "concatmap -> flatten"
+        $ concatMapSR
+    when ("inline" `elem` os) $ before SpecConstr $ apply (Always "-- inline constructors") $ tryR $ inlineConstructors
     when ("interactive" `elem` os) $ lastPass $ interactive sfexts cos
 
 showRule :: Bool -> RewriteH CoreExpr -> RewriteH CoreExpr

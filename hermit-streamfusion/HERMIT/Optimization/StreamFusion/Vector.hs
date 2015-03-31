@@ -14,6 +14,7 @@ import qualified Data.Vector.Fusion.Stream.Size as Size
 import           HERMIT.Core
 import           HERMIT.External
 import           HERMIT.GHC hiding (display)
+import           HERMIT.Kernel
 import           HERMIT.Kure hiding (apply)
 import           HERMIT.Name
 import           HERMIT.Plugin
@@ -36,15 +37,17 @@ plugin = hermitPlugin $ \ opts -> do
     let (pn,opts') = fromMaybe (0,opts) (getPassFlag opts)
     done <- liftM passesDone getPassInfo
     when (notNull done) $ liftIO $ print $ last done
-    apply $ tryR
-          $ repeatR
-          $ anyCallR
-          $ promoteExprR
-          $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
+    apply (Always "-- concatMap -> flatten")
+        $ tryR
+        $ repeatR
+        $ anyCallR
+        $ promoteExprR
+        $ (bracketR "concatMap -> flatten" concatMapSafe) <+ unfoldNamesR ["concatMap", "concatMap", "concatMap"]
     forM_ opts' $ \ nm -> do
-        apply $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
+        apply (Always "-- inline dictionaries and simplify")
+            $ tryR $ innermostR (promoteR (inlineFunctionWithTyConArgR nm)) >+> simplifyR
     -- interactive sfexts []
-    before SpecConstr $ apply $ tryR $ inlineConstructors
+    before SpecConstr $ apply (Always "-- inline constructors") $ tryR $ inlineConstructors
     lastPass $ interactive sfexts []
 
 concatMapSafe :: RewriteH CoreExpr
