@@ -1,7 +1,8 @@
 {-# LANGUAGE ExistentialQuantification, BangPatterns #-}
 module HERMIT.Optimization.StreamFusion.List
-    ( module HERMIT.Optimization.StreamFusion.Base
-    , allS
+    ( -- module HERMIT.Optimization.StreamFusion.Base
+    -- , allS
+      allS
     , andS
     , anyS
     , appendS
@@ -34,12 +35,20 @@ module HERMIT.Optimization.StreamFusion.List
     , unfoldrS
     , zipS
     , zipWithS
+    , Stream(..)
+    , Step(..)
+    , SPEC(..)
+    , stream
+    , unstream
+    , fixStep
     ) where
 
-import HERMIT.Optimization.StreamFusion.Base
+-- import HERMIT.Optimization.StreamFusion.Base
 
 import Data.Char (ord,chr)
 import Data.List (foldl', intersperse, nub, unfoldr)
+import GHC.Exts( SpecConstrAnnotation(..) )
+import GHC.Types( SPEC(..) )
 
 {-# INLINE indexS #-}
 indexS :: Stream a -> Int -> a
@@ -1475,3 +1484,34 @@ declare f bs = Stream next (f bs)
       Yield x s' -> Yield x (Stream next0 s')
 {-# INLINE [0] declare #-}
 -}
+
+{-# INLINE fixStep #-}
+fixStep :: forall a b s. a -> Step b s -> Step b (a,s)
+fixStep _ Done        = Done
+fixStep a (Skip s)    = Skip (a,s)
+fixStep a (Yield b s) = Yield b (a,s)
+
+data Stream a = forall s. Stream (s -> Step a s) s
+data Step a s = Done | Skip s | Yield a s
+
+-- data SPEC = SPEC | SPEC2
+-- {-# ANN type SPEC ForceSpecConstr #-}
+
+{-# INLINE [0] stream #-}
+stream :: [a] -> Stream a
+stream xs = Stream uncons xs
+    where uncons :: [a] -> Step a [a]
+          uncons []     = Done
+          uncons (x:xs) = Yield x xs
+          {-# INLINE uncons #-}
+
+{-# INLINE [0] unstream #-}
+unstream :: Stream a -> [a]
+unstream (Stream n s) = go SPEC s
+    where go !sPEC s = case n s of
+                        Done       -> []
+                        Skip s'    -> go sPEC s'
+                        Yield x s' -> x : go sPEC s'
+
+{-# RULES "unstream/stream" forall xs. unstream (stream xs) = xs #-}
+{-# RULES "stream/unstream" forall s.  stream (unstream s)  = s  #-}
