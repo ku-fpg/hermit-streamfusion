@@ -22,13 +22,9 @@ library
     other-modules:
 
     build-depends:
-        base,
-        containers,
-        data-default,
-        ghc == 7.8.*,
+        base   >= 4.7 && < 5,
         ghc-prim,
-        hermit,
-        template-haskell,
+        hermit >= 0.7,
         vector
 
     ghc-options: -Wall -fno-warn-orphans
