@@ -10,7 +10,6 @@ import HERMIT.External
 import HERMIT.GHC
 import HERMIT.Kernel
 import HERMIT.Kure hiding (apply)
-import HERMIT.Lemma
 import HERMIT.Name
 import HERMIT.Plugin
 import HERMIT.Plugin.Builder
@@ -21,17 +20,17 @@ import Prelude hiding (until)
 
 plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
-    let (os,cos) = partition (`elem` ["interactive","inline","rules","showrule"]) opts
+    let (os,cos') = partition (`elem` ["interactive","inline","rules","showrule"]) opts
         srFlag = "showrule" `elem` os
 
     -- debug output phase name
-    left <- liftM passesLeft getPassInfo
-    when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show left ++ " ==========="
+    left' <- liftM passesLeft getPassInfo
+    when (notNull left') $ liftIO $ putStrLn $ "=========== " ++ show left' ++ " ==========="
 
     pass 0 $ do
         query (Always "inject-dependency \"HERMIT.Optimization.StreamFusion.List\"")
             (promoteModGutsT (injectDependencyT $ mkModuleName "HERMIT.Optimization.StreamFusion.List") :: TransformH LCore ())
-        when ("interactive" `elem` os) $ interactive sfexts cos
+        when ("interactive" `elem` os) $ interactive sfexts cos'
         -- We need to run the rules which match on standard list combinators
         -- before the simplifier tries to use the rules that belong to them.
         when ("rules" `elem` os) $
@@ -49,7 +48,7 @@ plugin = hermitPlugin $ \ opts -> do
         $ concatMapSR
     liftIO $ putStrLn "ending"
     when ("inline" `elem` os) $ before SpecConstr $ apply (Always "-- inline constructors") $ tryR $ inlineConstructors
-    when ("interactive" `elem` os) $ lastPass $ interactive sfexts cos
+    when ("interactive" `elem` os) $ lastPass $ interactive sfexts cos'
 
 showRule :: Bool -> RewriteH CoreExpr -> RewriteH CoreExpr
 showRule True = bracketR "rule"

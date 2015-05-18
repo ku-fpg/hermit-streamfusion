@@ -26,17 +26,17 @@ data SPEC = SPEC | SPEC2
 stream :: [a] -> Stream a
 stream xs = Stream uncons xs
     where uncons :: [a] -> Step a [a]
-          uncons []     = Done
-          uncons (x:xs) = Yield x xs
+          uncons []      = Done
+          uncons (x:xs') = Yield x xs'
           {-# INLINE uncons #-}
 
 {-# INLINE [0] unstream #-}
 unstream :: Stream a -> [a]
 unstream (Stream n s) = go SPEC s
-    where go !sPEC s = case n s of
-                        Done       -> []
-                        Skip s'    -> go sPEC s'
-                        Yield x s' -> x : go sPEC s'
+    where go !sPEC s' = case n s' of
+                         Done        -> []
+                         Skip s''    -> go sPEC s''
+                         Yield x s'' -> x : go sPEC s''
 
 {-# RULES "unstream/stream" forall xs. unstream (stream xs) = xs #-}
 {-# RULES "stream/unstream" forall s.  stream (unstream s)  = s  #-}

@@ -27,5 +27,5 @@ library
         hermit >= 0.7,
         vector
 
-    ghc-options: -Wall -fno-warn-orphans
+    ghc-options: -Wall
     default-language: Haskell2010

@@ -5,15 +5,13 @@ import           Control.Arrow
 import           Control.Monad
 
 import           Data.Maybe (fromMaybe)
-import qualified Data.Vector as V
 -- import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Fusion.Stream as VS
-import qualified Data.Vector.Fusion.Stream.Monadic as M
 import qualified Data.Vector.Fusion.Stream.Size as Size
 
 import           HERMIT.Core
 import           HERMIT.External
-import           HERMIT.GHC hiding (display)
+import           HERMIT.GHC
 import           HERMIT.Kernel
 import           HERMIT.Kure hiding (apply)
 import           HERMIT.Name
@@ -34,7 +32,7 @@ fixStep a mr = mr >>= return . go
 
 plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
-    let (pn,opts') = fromMaybe (0,opts) (getPassFlag opts)
+    let (_pn,opts') = fromMaybe (0,opts) (getPassFlag opts)
     done <- liftM passesDone getPassInfo
     when (notNull done) $ liftIO $ print $ last done
     apply (Always "-- concatMap -> flatten")

@@ -45,30 +45,30 @@ module HERMIT.Optimization.StreamFusion.List
 
 -- import HERMIT.Optimization.StreamFusion.Base
 
-import Data.Char (ord,chr)
+-- import Data.Char (ord,chr)
 import Data.List (foldl', intersperse, nub, unfoldr)
-import GHC.Exts( SpecConstrAnnotation(..) )
+-- import GHC.Exts( SpecConstrAnnotation(..) )
 import GHC.Types( SPEC(..) )
 
 {-# INLINE indexS #-}
 indexS :: Stream a -> Int -> a
 indexS (Stream g s) n | n < 0 = error "(!!) negative index"
                       | otherwise = go SPEC n s
-    where go !sPEC !n !s = case g s of
-                            Done       -> error "(!!) index too large"
-                            Skip s'    -> go sPEC n s'
-                            Yield x s' | n > 0 -> go sPEC (n-1) s'
-                                       | otherwise -> x
+    where go !sPEC !n' !s' = case g s' of
+                              Done        -> error "(!!) index too large"
+                              Skip s''    -> go sPEC n' s''
+                              Yield x s'' | n' > 0 -> go sPEC (n'-1) s''
+                                          | otherwise -> x
 {-# RULES "indexS" forall l n. l !! n = indexS (stream l) n #-}
 
 {-# INLINE allS #-}
 allS :: (a -> Bool) -> Stream a -> Bool
 allS p (Stream g s) = loop_all s
-    where loop_all s = case g s of
-                        Done -> True
-                        Skip s' -> loop_all s'
-                        Yield x s' | p x       -> loop_all s'
-                                   | otherwise -> False
+    where loop_all s' = case g s' of
+                         Done -> True
+                         Skip s'' -> loop_all s''
+                         Yield x s'' | p x       -> loop_all s''
+                                     | otherwise -> False
           {-# INLINE loop_all #-}
 {-# RULES "allS" forall p. all p = allS p . stream #-}
 
@@ -80,50 +80,50 @@ andS = foldrS (&&) True
 {-# INLINE anyS #-}
 anyS :: (a -> Bool) -> Stream a -> Bool
 anyS p (Stream g s) = loop_any s
-  where loop_any s = case g s of
-                        Done -> False
-                        Skip s' -> loop_any s'
-                        Yield x s' | p x       -> True
-                                   | otherwise -> loop_any s'
+  where loop_any s' = case g s' of
+                         Done -> False
+                         Skip s'' -> loop_any s''
+                         Yield x s'' | p x       -> True
+                                     | otherwise -> loop_any s''
         {-# INLINE loop_any #-}
 {-# RULES "anyS" forall p. any p = anyS p . stream #-}
 
 {-# INLINE appendS #-}
 appendS :: Stream a -> Stream a -> Stream a
 appendS (Stream n1 s1) (Stream n2 s2) = Stream n (Left s1)
-    where n (Left s1) = case n1 s1 of
-                            Done -> Skip (Right s2)
-                            Skip s1' -> Skip (Left s1')
-                            Yield x s1' -> Yield x (Left s1')
-          n (Right s2) = case n2 s2 of
-                            Done -> Done
-                            Skip s2' -> Skip (Right s2')
-                            Yield x s2' -> Yield x (Right s2')
+    where n (Left s1') = case n1 s1' of
+                             Done -> Skip (Right s2)
+                             Skip s1'' -> Skip (Left s1'')
+                             Yield x s1'' -> Yield x (Left s1'')
+          n (Right s2') = case n2 s2' of
+                             Done -> Done
+                             Skip s2'' -> Skip (Right s2'')
+                             Yield x s2'' -> Yield x (Right s2'')
           {-# INLINE n #-}
 {-# RULES "appendS" forall xs ys. xs ++ ys = unstream (appendS (stream xs) (stream ys)) #-}
 
 {-# INLINE [0] concatS #-}
 concatS :: Stream [a] -> [a]
 concatS (Stream g s) = loop_concat s
-    where loop_concat s = case g s of
-                            Done -> []
-                            Skip s' -> loop_concat s'
-                            Yield xs s' -> loop_concat_inner xs s'
-          loop_concat_inner [] s = loop_concat s
-          loop_concat_inner (x:xs) s = x : loop_concat_inner xs s
+    where loop_concat s' = case g s' of
+                             Done -> []
+                             Skip s'' -> loop_concat s''
+                             Yield xs s'' -> loop_concat_inner xs s''
+          loop_concat_inner [] s' = loop_concat s'
+          loop_concat_inner (x:xs) s' = x : loop_concat_inner xs s'
 {-# RULES "concatS" forall s. concat (unstream s) = concatS s #-}
 
 {-# INLINE [0] concatMapS #-}
 concatMapS :: (a -> Stream b) -> Stream a -> Stream b
 concatMapS f (Stream n s) = Stream n' (s, Nothing)
-    where n' (s, Nothing) = case n s of
-                                Done -> Done
-                                Skip s' -> Skip (s', Nothing)
-                                Yield x s' -> Skip (s', Just (f x))
-          n' (s, Just (Stream n'' s'')) = case n'' s'' of
-                                            Done -> Skip (s, Nothing)
-                                            Skip s' -> Skip (s, Just (Stream n'' s'))
-                                            Yield x s' -> Yield x (s, Just (Stream n'' s'))
+    where n' (s', Nothing) = case n s' of
+                                 Done -> Done
+                                 Skip s'' -> Skip (s'', Nothing)
+                                 Yield x s'' -> Skip (s'', Just (f x))
+          n' (s', Just (Stream n'' s'')) = case n'' s'' of
+                                             Done -> Skip (s', Nothing)
+                                             Skip s''' -> Skip (s', Just (Stream n'' s'''))
+                                             Yield x s''' -> Yield x (s', Just (Stream n'' s'''))
           {-# INLINE n' #-}
 {-# RULES
 "concatMapS" forall f. concatMap f = unstream . concatMapS (stream . f) . stream
@@ -134,11 +134,11 @@ concatMapS f (Stream n s) = Stream n' (s, Nothing)
 {-# INLINE consS #-}
 consS :: a -> Stream a -> Stream a
 consS x (Stream n s) = Stream n' (Left s)
-    where n' (Left s) = Yield x (Right s)
-          n' (Right s) = case n s of
+    where n' (Left s') = Yield x (Right s')
+          n' (Right s') = case n s' of
                             Done -> Done
-                            Skip s' -> Skip (Right s')
-                            Yield x s' -> Yield x (Right s')
+                            Skip s'' -> Skip (Right s'')
+                            Yield x' s'' -> Yield x' (Right s'')
           {-# INLINE n' #-}
 -- Note: this RULE must never run during or after a phase where unstream
 -- is inlinable, or programs will diverge.
@@ -148,27 +148,27 @@ consS x (Stream n s) = Stream n' (Left s)
 {-# INLINE dropS #-}
 dropS :: Int -> Stream a -> Stream a
 dropS n (Stream g s) = Stream dropG (Just (max 0 n), s)
-    where dropG (Just !n, s)
-            | n == 0    = Skip (Nothing, s)
-            | otherwise = case g s of
+    where dropG (Just !n', s')
+            | n' == 0    = Skip (Nothing, s')
+            | otherwise = case g s' of
                             Done       -> Done
-                            Skip    s' -> Skip (Just n, s')
-                            Yield _ s' -> Skip (Just (n-1), s')
-          dropG (Nothing, s) = case g s of
+                            Skip    s'' -> Skip (Just n', s'')
+                            Yield _ s'' -> Skip (Just (n'-1), s'')
+          dropG (Nothing, s') = case g s' of
                                 Done       -> Done
-                                Skip    s' -> Skip    (Nothing, s')
-                                Yield x s' -> Yield x (Nothing, s')
+                                Skip    s'' -> Skip    (Nothing, s'')
+                                Yield x s'' -> Yield x (Nothing, s'')
           {-# INLINE dropG #-}
 {-# RULES "dropS" forall n. drop n = unstream . dropS n . stream #-}
 
 {-# INLINE elemS #-}
 elemS :: Eq a => a -> Stream a -> Bool
 elemS x (Stream g s) = loop_elem s
-  where loop_elem s = case g s of
-            Done       -> False
-            Skip    s' -> loop_elem s'
-            Yield y s' | x == y    -> True
-                       | otherwise -> loop_elem s'
+  where loop_elem s' = case g s' of
+            Done        -> False
+            Skip    s'' -> loop_elem s''
+            Yield y s'' | x == y    -> True
+                        | otherwise -> loop_elem s''
 {-# RULES "elemS" forall x. elem x = elemS x . stream #-}
 
 {-# INLINE enumFromToS #-}
@@ -184,11 +184,11 @@ enumFromToS l h = Stream gEnum sEnum
 {-# INLINE filterS #-}
 filterS :: (a -> Bool) -> Stream a -> Stream a
 filterS p (Stream n s) = Stream n' s
-    where n' s = case n s of
-                    Done -> Done
-                    Skip s' -> Skip s'
-                    Yield x s' | p x -> Yield x s'
-                               | otherwise -> Skip s'
+    where n' s' = case n s' of
+                     Done -> Done
+                     Skip s'' -> Skip s''
+                     Yield x s'' | p x -> Yield x s''
+                                 | otherwise -> Skip s''
 {-# RULES "filterS" forall p. filter p = unstream . filterS p . stream #-}
 
 {-# INLINE flatten #-}
@@ -198,14 +198,14 @@ flatten mk gFlatten = unstream . flattenS mk gFlatten . stream
 {-# INLINE flattenS #-}
 flattenS :: forall a b s. (a -> s) -> (s -> Step b s) -> Stream a -> Stream b
 flattenS mk gFlatten (Stream n s) = Stream n' sFlatten
-    where n' (s, Nothing) = case n s of
+    where n' (s', Nothing) = case n s' of
                                     Done -> Done
-                                    Skip s' -> Skip (s', Nothing)
-                                    Yield x s' -> Skip (s', Just (mk x))
-          n' (s, Just s'') = case gFlatten s'' of
-                                    Done -> Skip (s, Nothing)
-                                    Skip s' -> Skip (s, Just s')
-                                    Yield x s' -> Yield x (s, Just s')
+                                    Skip s'' -> Skip (s'', Nothing)
+                                    Yield x s'' -> Skip (s'', Just (mk x))
+          n' (s', Just s'') = case gFlatten s'' of
+                                    Done -> Skip (s', Nothing)
+                                    Skip s''' -> Skip (s', Just s''')
+                                    Yield x s''' -> Yield x (s', Just s''')
           {-# INLINE n' #-}
           sFlatten = (s, Nothing)
           {-# INLINE sFlatten #-}
@@ -213,19 +213,19 @@ flattenS mk gFlatten (Stream n s) = Stream n' sFlatten
 {-# INLINE foldlS #-}
 foldlS :: (b -> a -> b) -> b -> Stream a -> b
 foldlS f z (Stream n s) = go SPEC z s
-    where go !sPEC z s = case n s of
-                            Done       -> z
-                            Skip s'    -> go sPEC z s'
-                            Yield x s' -> go sPEC (f z x) s'
+    where go !sPEC z' s' = case n s' of
+                             Done        -> z'
+                             Skip s''    -> go sPEC z' s''
+                             Yield x s'' -> go sPEC (f z' x) s''
 {-# RULES "foldlS" forall f z. foldl f z = foldlS f z . stream #-}
 
 {-# INLINE foldlS' #-}
 foldlS' :: (b -> a -> b) -> b -> Stream a -> b
 foldlS' f z (Stream n s) = go SPEC z s
-    where go !sPEC !z !s = case n s of
-                            Done       -> z
-                            Skip s'    -> go sPEC z s'
-                            Yield x s' -> go sPEC (f z x) s'
+    where go !sPEC !z' !s' = case n s' of
+                            Done        -> z'
+                            Skip s''    -> go sPEC z' s''
+                            Yield x s'' -> go sPEC (f z' x) s''
 {-# RULES "foldlS'" forall f z. foldl' f z = foldlS' f z . stream #-}
 {-# RULES "sum" sum = foldl' (+) 0 #-}
 {-# RULES "product" product = foldl' (*) 1 #-}
@@ -233,35 +233,35 @@ foldlS' f z (Stream n s) = go SPEC z s
 {-# INLINE foldrS #-}
 foldrS :: (a -> b -> b) -> b -> Stream a -> b
 foldrS f z (Stream n s) = go SPEC s
-    where go !sPEC s = case n s of
-                        Done       -> z
-                        Skip s'    -> go sPEC s'
-                        Yield x s' -> f x (go sPEC s')
+    where go !sPEC s' = case n s' of
+                         Done        -> z
+                         Skip s''    -> go sPEC s''
+                         Yield x s'' -> f x (go sPEC s'')
 {-# RULES "foldrS" forall f z. foldr f z = foldrS f z . stream #-}
 
 {-# INLINE headS #-}
 headS :: Stream a -> a
 headS (Stream n s) = go SPEC s
-    where go !sPEC s = case n s of
-                        Done -> error "headS empty stream"
-                        Skip s' -> go sPEC s'
-                        Yield x _ -> x
+    where go !sPEC s' = case n s' of
+                         Done -> error "headS empty stream"
+                         Skip s'' -> go sPEC s''
+                         Yield x _ -> x
 {-# RULES "headS" head = headS . stream #-}
 
 {-# INLINE intersperseS #-}
 intersperseS :: a -> Stream a -> Stream a
 intersperseS sep (Stream g s) = Stream intersperseG (Left s, Nothing)
-  where intersperseG (Left s, Nothing) = case g s of
+  where intersperseG (Left s', Nothing) = case g s' of
             Done       -> Done
-            Skip    s' -> Skip (Left s', Nothing)
-            Yield x s' -> Skip (Left s', Just x)
+            Skip    s'' -> Skip (Left s'', Nothing)
+            Yield x s'' -> Skip (Left s'', Just x)
 
-        intersperseG (Left s, Just x) = Yield x (Right s, Nothing)
+        intersperseG (Left s', Just x) = Yield x (Right s', Nothing)
 
-        intersperseG (Right s, Nothing) = case g s of
+        intersperseG (Right s', Nothing) = case g s' of
             Done       -> Done
-            Skip    s' -> Skip      (Right s', Nothing)
-            Yield x s' -> Yield sep (Left s', Just x)
+            Skip    s'' -> Skip      (Right s'', Nothing)
+            Yield x s'' -> Yield sep (Left s'', Just x)
         -- intersperseG (Right _, Just _) -- can't happen
         {-# INLINE intersperseG #-}
 {-# RULES "intersperseS" forall p. intersperse p = unstream . intersperseS p . stream #-}
@@ -269,7 +269,7 @@ intersperseS sep (Stream g s) = Stream intersperseG (Left s, Nothing)
 {-# INLINE iterateS #-}
 iterateS :: (a -> a) -> a -> Stream a
 iterateS f x = Stream n x
-    where n x = Yield x (f x)
+    where n x' = Yield x' (f x')
           {-# INLINE n #-}
 {-# RULES "iterateS" forall f. iterate f = unstream . iterateS f #-}
 
@@ -281,10 +281,10 @@ lengthS = foldlS' (\s _ -> s + 1) (0 :: Int)
 {-# INLINE mapS #-}
 mapS :: (a -> b) -> Stream a -> Stream b
 mapS f (Stream n s) = Stream n' s
-    where n' s = case n s of
-                    Done       -> Done
-                    Skip s'    -> Skip s'
-                    Yield x s' -> Yield (f x) s'
+    where n' s' = case n s' of
+                     Done        -> Done
+                     Skip s''    -> Skip s''
+                     Yield x s'' -> Yield (f x) s''
           {-# INLINE n' #-}
 {-# RULES "mapS" forall f. map f = unstream . mapS f . stream #-}
 
@@ -296,21 +296,21 @@ nilS = Stream (\() -> Done) ()
 {-# INLINE nubS #-}
 nubS :: Eq a => Stream a -> Stream a
 nubS (Stream g s) = Stream nubG ([],s)
-    where nubG (seen,s) = case g s of
-                            Done -> Done
-                            Skip s' -> Skip (seen,s')
-                            Yield x s' | x `elem` seen -> Skip (seen, s')
-                                       | otherwise -> Yield x (x:seen, s')
+    where nubG (seen,s') = case g s' of
+                             Done -> Done
+                             Skip s'' -> Skip (seen,s'')
+                             Yield x s'' | x `elem` seen -> Skip (seen, s'')
+                                         | otherwise -> Yield x (x:seen, s'')
           {-# INLINE nubG #-}
 {-# RULES "nubS" nub = unstream . nubS . stream #-}
 
 {-# INLINE nullS #-}
 nullS :: Stream a -> Bool
 nullS (Stream g s) = loop_null s
-  where loop_null s = case g s of
-            Done       -> True
-            Skip    s' -> loop_null s'
-            Yield _ _  -> False
+  where loop_null s' = case g s' of
+             Done        -> True
+             Skip    s'' -> loop_null s''
+             Yield _ _   -> False
 {-# RULES "nullS" null = nullS . stream #-}
 
 {-# INLINE orS #-}
@@ -321,8 +321,8 @@ orS = foldrS (||) False
 {-# INLINE singletonS #-}
 singletonS :: a -> Stream a
 singletonS x = Stream n (Just x)
-    where n (Just x) = Yield x Nothing
-          n Nothing  = Done
+    where n (Just x') = Yield x' Nothing
+          n Nothing   = Done
           {-# INLINE n #-}
 -- {-# RULES "singletonS" forall x. consS x nilS = singletonS x #-}
 {-# RULES "singletonS" forall x. (:) x [] = unstream (singletonS x) #-}
@@ -334,10 +334,10 @@ singletonS x = Stream n (Just x)
 {-# INLINE snocS #-}
 snocS :: Stream a -> a -> Stream a
 snocS (Stream g s) y = Stream snocG (Just s)
-  where snocG (Just xs) = case g s of
-                            Done       -> Yield y Nothing
-                            Skip s'    -> Skip    (Just s')
-                            Yield x s' -> Yield x (Just s')
+  where snocG (Just _) = case g s of
+                           Done       -> Yield y Nothing
+                           Skip s'    -> Skip    (Just s')
+                           Yield x s' -> Yield x (Just s')
         snocG Nothing = Done
         {-# INLINE snocG #-}
 {-# RULES "snocS" forall l x. l ++ [x] = unstream (snocS (stream l) x) #-}
@@ -345,25 +345,25 @@ snocS (Stream g s) y = Stream snocG (Just s)
 {-# INLINE tailS #-}
 tailS :: Stream a -> Stream a
 tailS (Stream n s) = Stream n' (Left s)
-    where n' (Left s) = case n s of
-                            Done -> error "tailS empty stream"
-                            Skip s' -> Skip (Left s')
-                            Yield _ s' -> Skip (Right s')
-          n' (Right s) = case n s of
+    where n' (Left s') = case n s' of
+                             Done -> error "tailS empty stream"
+                             Skip s'' -> Skip (Left s'')
+                             Yield _ s'' -> Skip (Right s'')
+          n' (Right s') = case n s' of
                             Done -> Done
-                            Skip s' -> Skip (Right s')
-                            Yield x s' -> Yield x (Right s')
+                            Skip s'' -> Skip (Right s'')
+                            Yield x s'' -> Yield x (Right s'')
           {-# INLINE n' #-}
 {-# RULES "tailS" tail = unstream . tailS . stream #-}
 
 {-# INLINE takeS #-}
 takeS :: Int -> Stream a -> Stream a
 takeS n (Stream g s) = Stream takeG (n,s)
-  where takeG (!n, s)
-            | n > 0 = case g s of
-                        Done       -> Done
-                        Skip    s' -> Skip    (n, s')
-                        Yield x s' -> Yield x (n-1, s')
+  where takeG (!n', s')
+            | n' > 0 = case g s' of
+                         Done        -> Done
+                         Skip    s'' -> Skip    (n', s'')
+                         Yield x s'' -> Yield x (n'-1, s'')
             | otherwise = Done
         {-# INLINE takeG #-}
 {-# RULES "takeS" forall n. take n = unstream . takeS n . stream #-}
@@ -371,9 +371,9 @@ takeS n (Stream g s) = Stream takeG (n,s)
 {-# INLINE unfoldrS #-}
 unfoldrS :: (b -> Maybe (a, b)) -> b -> Stream a
 unfoldrS f s = Stream unfoldrG s
-    where unfoldrG s = case f s of
-                        Nothing      -> Done
-                        Just (x, s') -> Yield x s'
+    where unfoldrG s' = case f s' of
+                         Nothing      -> Done
+                         Just (x, s'') -> Yield x s''
           {-# INLINE unfoldrG #-}
 {-# RULES "unfoldrS" forall f s. unfoldr f s = unstream (unfoldrS f s) #-}
 
@@ -385,14 +385,14 @@ zipS = zipWithS (,)
 {-# INLINE zipWithS #-}
 zipWithS :: (a -> b -> c) -> Stream a -> Stream b -> Stream c
 zipWithS f (Stream na sa) (Stream nb sb) = Stream n (sa, sb, Nothing)
-    where n (sa, sb, Nothing) = case na sa of
-                                    Done -> Done
-                                    Skip sa' -> Skip (sa', sb, Nothing)
-                                    Yield a sa' -> Skip (sa', sb, Just a)
-          n (sa, sb, Just a) = case nb sb of
-                                    Done -> Done
-                                    Skip sb' -> Skip (sa, sb', Just a)
-                                    Yield b sb' -> Yield (f a b) (sa, sb', Nothing)
+    where n (sa', sb', Nothing) = case na sa' of
+                                      Done -> Done
+                                      Skip sa'' -> Skip (sa'', sb', Nothing)
+                                      Yield a sa'' -> Skip (sa'', sb', Just a)
+          n (sa', sb', Just a) = case nb sb' of
+                                      Done -> Done
+                                      Skip sb'' -> Skip (sa', sb'', Just a)
+                                      Yield b sb'' -> Yield (f a b) (sa', sb'', Nothing)
           {-# INLINE n #-}
 {-# RULES "zipWithS" forall f xs. zipWith f xs = unstream . zipWithS f (stream xs) . stream #-}
 
@@ -1501,17 +1501,17 @@ data Step a s = Done | Skip s | Yield a s
 stream :: [a] -> Stream a
 stream xs = Stream uncons xs
     where uncons :: [a] -> Step a [a]
-          uncons []     = Done
-          uncons (x:xs) = Yield x xs
+          uncons []      = Done
+          uncons (x:xs') = Yield x xs'
           {-# INLINE uncons #-}
 
 {-# INLINE [0] unstream #-}
 unstream :: Stream a -> [a]
 unstream (Stream n s) = go SPEC s
-    where go !sPEC s = case n s of
-                        Done       -> []
-                        Skip s'    -> go sPEC s'
-                        Yield x s' -> x : go sPEC s'
+    where go !sPEC s' = case n s' of
+                         Done        -> []
+                         Skip s''    -> go sPEC s''
+                         Yield x s'' -> x : go sPEC s''
 
 {-# RULES "unstream/stream" forall xs. unstream (stream xs) = xs #-}
 {-# RULES "stream/unstream" forall s.  stream (unstream s)  = s  #-}
